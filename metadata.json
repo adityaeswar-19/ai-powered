@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Copy of Copy of AI Learning Platform sriram",
+  "description": "An all-in-one AI-powered learning assistant. Features include a personal tutor, exam prep tools from your notes, and a coding mentor to explain complex code.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
