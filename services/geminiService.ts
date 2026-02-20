@@ -27,41 +27,49 @@ const buildChatHistory = (history: ChatMessage[]): Content[] => {
     }).filter((msg): msg is Content => msg !== null);
 };
 
-export const generateTutorResponseStream = async (prompt: string, language: string, history: ChatMessage[], image?: { mimeType: string; data: string; }): Promise<AsyncGenerator<{ text?: string; sources?: { title: string; uri: string }[] }>> => {
-  const userParts: Part[] = [{ text: prompt }];
-  if (image) userParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
-  const contents = [...buildChatHistory(history), { role: 'user', parts: userParts }];
-  
-  const responseStream = await ai.models.generateContentStream({
-      model: 'gemini-3-flash-preview',
-      contents,
-      config: { 
-          systemInstruction: `You are a friendly personal tutor. Respond in ${language}. No markdown. You have access to the live web for scraping information if needed.`,
-          tools: [{ googleSearch: {} }] 
-      }
-  });
-
-  async function* streamGenerator() {
-    for await (const chunk of responseStream) {
-        const result: { text?: string; sources?: { title: string; uri: string }[] } = { text: chunk.text };
-        
-        const groundingChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
-        if (groundingChunks) {
-            result.sources = groundingChunks
-                .filter((c: any) => c.web)
-                .map((c: any) => ({ title: c.web.title, uri: c.web.uri }));
+export const generateTutorResponseStream = async (
+    prompt: string, 
+    language: string, 
+    history: ChatMessage[], 
+    image?: { mimeType: string; data: string; }
+): Promise<AsyncGenerator<{ text?: string; sources?: { title: string; uri: string }[] }>> => {
+    
+    const userParts: Part[] = [{ text: prompt }];
+    if (image) userParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+    
+    const contents = [...buildChatHistory(history), { role: 'user', parts: userParts }];
+    
+    const responseStream = await ai.models.generateContentStream({
+        model: GEMINI_MODEL,
+        contents,
+        config: { 
+            systemInstruction: `You are a friendly personal tutor. Respond in ${language}. No markdown. You have access to live web search.`,
+            tools: [{ googleSearch: {} }]
         }
-        yield result;
+    });
+
+    async function* streamGenerator() {
+        for await (const chunk of responseStream) {
+            const result: { text?: string; sources?: { title: string; uri: string }[] } = { text: chunk.text };
+            
+            const groundingChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            if (groundingChunks) {
+                result.sources = groundingChunks
+                    .filter((c: any) => c.web)
+                    .map((c: any) => ({ title: c.web.title, uri: c.web.uri }));
+            }
+            yield result;
+        }
     }
-  }
-  return streamGenerator();
+    
+    return streamGenerator();
 };
 
 export const generateNoraTextStream = async (session: NoraSession, prompt: string, image?: { mimeType: string; data: string; }): Promise<AsyncGenerator<string>> => {
     const userParts: Part[] = [{ text: prompt }];
     if (image) userParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
     const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
+        model: GEMINI_MODEL,
         contents: [...buildChatHistory(session.history), { role: 'user', parts: userParts }],
         config: { systemInstruction: `You are NORA. Use these notes: ${session.notes}` }
     });
@@ -73,7 +81,7 @@ export const generateNoraJson = async (session: NoraSession, prompt: string, sch
     const userParts: Part[] = [{ text: prompt }];
     if (image) userParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: GEMINI_MODEL,
         contents: [...buildChatHistory(session.history), { role: 'user', parts: userParts }],
         config: { systemInstruction: `You are NORA. Use these notes: ${session.notes}`, responseMimeType: 'application/json', responseSchema: schema }
     });
@@ -93,13 +101,13 @@ export const generateImage = async(prompt: string): Promise<string> => {
 };
 
 export const generateNotesFromTranscription = async (transcription: string): Promise<string> => {
-    const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Summarize this as notes:\n${transcription}` });
+    const response = await ai.models.generateContent({ model: GEMINI_MODEL, contents: `Summarize this as notes:\n${transcription}` });
     return response.text;
 };
 
 export const explainCode = async (code: string, language: string): Promise<CodeExplanation[]> => {
     const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: GEMINI_MODEL,
         contents: `Explain ${language} code:\n${code}`,
         config: { responseMimeType: 'application/json', responseSchema: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { lineNumber: { type: Type.INTEGER }, code: { type: Type.STRING }, explanation: { type: Type.STRING } }, required: ['lineNumber', 'code', 'explanation'] } } }
     });
@@ -195,7 +203,7 @@ const navigateTool: FunctionDeclaration = {
 
 export const runRamAgent = async (transcript: string) => {
     return await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: GEMINI_MODEL,
         contents: transcript,
         config: {
             systemInstruction: RAM_SYSTEM_INSTRUCTION,
